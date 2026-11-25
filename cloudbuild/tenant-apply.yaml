@@ -1,0 +1,39 @@
+# Trigger "tenant-apply": manual trigger on main, "Require approval" ON.
+# Run with: gcloud builds triggers run tenant-apply --branch=main --substitutions=_TENANT=<name>
+substitutions:
+  _TF_VERSION: "1.9.8"
+  _TENANT: ""
+
+steps:
+  - id: guard
+    name: "hashicorp/terraform:${_TF_VERSION}"
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        set -eu
+        [ -n "${_TENANT}" ] || { echo "_TENANT substitution is required"; exit 1; }
+        [ -d "tenants/${_TENANT}" ] || { echo "tenants/${_TENANT} not found on main"; exit 1; }
+
+  - id: apply
+    name: "hashicorp/terraform:${_TF_VERSION}"
+    dir: "tenants/${_TENANT}"
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        set -eu
+        terraform init -input=false -no-color
+        terraform apply -input=false -auto-approve -no-color
+        terraform output -json tenant > /workspace/tenant-outputs.json
+
+artifacts:
+  objects:
+    location: "gs://socfirst-provisioning-records/${_TENANT}/$BUILD_ID/"
+    paths:
+      - "/workspace/tenant-outputs.json"
+
+serviceAccount: "projects/socfirst-automation/serviceAccounts/tf-tenant-provisioner@socfirst-automation.iam.gserviceaccount.com"
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: "5400s"
