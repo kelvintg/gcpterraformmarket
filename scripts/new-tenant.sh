@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create the Terraform configuration for a new Security Operation Center First tenant.
+# Create the Terraform configuration for a new SecurityOperationCenterFirst tenant.
 # Usage: scripts/new-tenant.sh <tenant-name> "<Customer display name>" <marketplace-order-id> [region]
 set -euo pipefail
 
@@ -63,11 +63,15 @@ for f in main.tf backend.tf terraform.tfvars; do
       "$TEMPLATE/$f" > "$DEST/$f"
 done
 
+BASE_DOMAIN="$(grep -E '^base_domain' "$DEST/terraform.tfvars" | cut -d'"' -f2)"
+
 cat <<EOF
 Created $DEST
   Project ID      : $PROJECT_ID
   Billing account : $(grep -E '^billing_account' "$DEST/terraform.tfvars" | cut -d'"' -f2)
   Region          : $REGION
+  Release         : $(grep -E '^release_version' "$DEST/terraform.tfvars" | cut -d'"' -f2)
+  Portal API      : https://api.${TENANT}.${BASE_DOMAIN}
 
 Next:
   git checkout -b tenant/$TENANT

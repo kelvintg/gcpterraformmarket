@@ -18,52 +18,107 @@ output "region" {
   value       = var.region
 }
 
-output "gke_cluster_name" {
-  description = "GKE Autopilot cluster name."
-  value       = google_container_cluster.autopilot.name
+output "release_version" {
+  description = "Platform release deployed to this tenant."
+  value       = var.release_version
 }
 
-output "sql_instance_name" {
-  description = "Cloud SQL instance name."
-  value       = google_sql_database_instance.main.name
+output "api_hostname" {
+  description = "Public hostname of the portal API."
+  value       = local.api_hostname
 }
 
-output "sql_connection_name" {
-  description = "Cloud SQL connection name for the Auth Proxy / connectors."
-  value       = google_sql_database_instance.main.connection_name
+output "lb_ip" {
+  description = "Global IP address of the load balancer."
+  value       = google_compute_global_address.api.address
 }
 
-output "sql_private_ip" {
-  description = "Private IP of the Cloud SQL instance."
-  value       = google_sql_database_instance.main.private_ip_address
+output "ssl_certificate" {
+  description = "Google-managed certificate name."
+  value       = google_compute_managed_ssl_certificate.api.name
 }
 
-output "sql_iam_user" {
-  description = "IAM database user for the workloads."
-  value       = google_sql_user.workload.name
+output "armor_policy" {
+  description = "Cloud Armor policy name."
+  value       = google_compute_security_policy.edge.name
 }
 
-output "logs_bucket" {
-  description = "Tenant raw-log bucket name."
-  value       = google_storage_bucket.soc_logs.name
+output "backend_service" {
+  description = "Load balancer backend service name."
+  value       = google_compute_backend_service.portal_api.name
+}
+
+output "raw_logs_topic" {
+  description = "Pub/Sub topic customers' log sources publish to."
+  value       = google_pubsub_topic.raw_logs.id
+}
+
+output "normalized_topic" {
+  description = "Pub/Sub topic of normalized events."
+  value       = google_pubsub_topic.normalized.id
+}
+
+output "function_name" {
+  description = "Cloud Functions log normalizer."
+  value       = google_cloudfunctions2_function.normalizer.name
+}
+
+output "run_portal_api" {
+  description = "Cloud Run portal API service."
+  value       = google_cloud_run_v2_service.portal_api.name
+}
+
+output "run_detection_engine" {
+  description = "Cloud Run detection engine service."
+  value       = google_cloud_run_v2_service.detection.name
+}
+
+output "firestore_database" {
+  description = "Firestore database."
+  value       = google_firestore_database.main.name
+}
+
+output "bq_events_dataset" {
+  description = "BigQuery dataset of normalized events."
+  value       = google_bigquery_dataset.events.dataset_id
+}
+
+output "bq_detections_dataset" {
+  description = "BigQuery dataset of detections."
+  value       = google_bigquery_dataset.detections.dataset_id
+}
+
+output "raw_logs_bucket" {
+  description = "Raw-log archive bucket."
+  value       = google_storage_bucket.raw_logs.name
+}
+
+output "vertex_endpoint_id" {
+  description = "Numeric Vertex AI endpoint ID."
+  value       = google_vertex_ai_endpoint.anomaly.name
+}
+
+output "firebase_hosting_site" {
+  description = "Firebase Hosting site ID of the analyst portal."
+  value       = google_firebase_hosting_site.portal.site_id
+}
+
+output "firebase_web_app_id" {
+  description = "Firebase web app ID."
+  value       = google_firebase_web_app.portal.app_id
+}
+
+output "openai_secret" {
+  description = "Secret Manager secret that holds the tenant's OpenAI API key."
+  value       = google_secret_manager_secret.openai.secret_id
+}
+
+output "collector_service_account" {
+  description = "Service account the on-prem collector uses through Workload Identity Federation."
+  value       = google_service_account.collector.email
 }
 
 output "kms_key_id" {
-  description = "CMEK key used by Cloud SQL and Cloud Storage."
+  description = "CMEK key used by Cloud Storage and BigQuery."
   value       = google_kms_crypto_key.cmek.id
-}
-
-output "workload_service_account" {
-  description = "Google service account used by the Security Operation Center First pods."
-  value       = google_service_account.workload.email
-}
-
-output "k8s_namespace" {
-  description = "Kubernetes namespace for the Security Operation Center First workloads."
-  value       = var.k8s_namespace
-}
-
-output "k8s_service_account" {
-  description = "Kubernetes service account bound through Workload Identity."
-  value       = var.k8s_service_account
 }

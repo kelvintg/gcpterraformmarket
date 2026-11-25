@@ -1,0 +1,40 @@
+# Trigger "tenant-release": manual trigger on main, "Require approval" ON.
+# Deploys the application release to one SecurityOperationCenterFirst tenant after tenant-apply:
+#   Vertex AI model -> tenant endpoint, analyst portal -> Firebase Hosting.
+# Run with: gcloud builds triggers run tenant-release --branch=main --substitutions=_TENANT=<name>
+substitutions:
+  _TF_VERSION: "1.9.8"
+  _TENANT: ""
+
+steps:
+  - id: outputs
+    name: "hashicorp/terraform:${_TF_VERSION}"
+    dir: "tenants/${_TENANT}"
+    entrypoint: sh
+    args:
+      - -c
+      - |
+        set -eu
+        [ -n "${_TENANT}" ] || { echo "_TENANT substitution is required"; exit 1; }
+        terraform init -input=false -no-color >/dev/null
+        terraform output -json tenant > /workspace/tenant.json
+
+  - id: vertex-and-portal-bundle
+    name: "gcr.io/google.com/cloudsdktool/google-cloud-cli:stable"
+    entrypoint: bash
+    args: ["scripts/deploy-release.sh", "/workspace/tenant.json", "/workspace/portal"]
+
+  - id: firebase-hosting
+    name: "node:20"
+    dir: "/workspace/portal"
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        npx --yes firebase-tools@13 deploy --only hosting --project "$$(cat project_id)" --non-interactive
+
+serviceAccount: "projects/socfirst-automation/serviceAccounts/tf-tenant-provisioner@socfirst-automation.iam.gserviceaccount.com"
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: "3600s"

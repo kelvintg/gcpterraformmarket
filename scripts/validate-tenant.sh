@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Post-provisioning checks for a Security Operation Center First tenant. Exit code 0 only if every check passes.
+# Post-provisioning checks for a SecurityOperationCenterFirst tenant. Exit code 0 only if every check passes.
 # Usage: scripts/validate-tenant.sh <tenant-name>
 set -uo pipefail
 
@@ -14,35 +14,53 @@ terraform init -input=false >/dev/null
 OUT="$(terraform output -json tenant)"
 get() { printf '%s' "$OUT" | jq -r ".$1"; }
 
-P="$(get project_id)"; R="$(get region)"; C="$(get gke_cluster_name)"
-I="$(get sql_instance_name)"; B="$(get logs_bucket)"; K="$(get kms_key_id)"; NS="$(get k8s_namespace)"
+P="$(get project_id)"; R="$(get region)"; K="$(get kms_key_id)"
+FOLDER="$(grep -E '^tenants_folder_id' terraform.tfvars | cut -d'"' -f2)"
 
 FAIL=0
 check() { # check "<name>" "<expected>" "<actual>"
-  if [[ "$3" == "$2" ]]; then printf 'PASS  %-34s %s\n' "$1" "$3"
-  else printf 'FAIL  %-34s expected [%s] got [%s]\n' "$1" "$2" "$3"; FAIL=1; fi
+  if [[ "$3" == "$2" ]]; then printf 'PASS  %-32s %s\n' "$1" "$3"
+  else printf 'FAIL  %-32s expected [%s] got [%s]\n' "$1" "$2" "$3"; FAIL=1; fi
+}
+check_set() { # check_set "<name>" "<actual>"  -> passes when actual is non-empty
+  if [[ -n "$2" ]]; then printf 'PASS  %-32s %s\n' "$1" "$2"
+  else printf 'FAIL  %-32s expected a value, got nothing\n' "$1"; FAIL=1; fi
 }
 
-check "Project ID"                 "customer-${TENANT}-prod" "$P"
-check "Project state"              "ACTIVE" "$(gcloud projects describe "$P" --format='value(lifecycleState)')"
-FOLDER="$(grep -E '^tenants_folder_id' terraform.tfvars | cut -d'"' -f2)"
-check "Project folder"             "$FOLDER" "$(gcloud projects describe "$P" --format='value(parent.id)')"
-check "Billing account"            "$EXPECTED_BILLING" "$(gcloud billing projects describe "$P" --format='value(billingAccountName)')"
-check "Billing enabled"            "True" "$(gcloud billing projects describe "$P" --format='value(billingEnabled)')"
-check "GKE status"                 "RUNNING" "$(gcloud container clusters describe "$C" --region "$R" --project "$P" --format='value(status)')"
-check "GKE Autopilot"              "True" "$(gcloud container clusters describe "$C" --region "$R" --project "$P" --format='value(autopilot.enabled)')"
-check "GKE private nodes"          "True" "$(gcloud container clusters describe "$C" --region "$R" --project "$P" --format='value(privateClusterConfig.enablePrivateNodes)')"
-check "Cloud SQL state"            "RUNNABLE" "$(gcloud sql instances describe "$I" --project "$P" --format='value(state)')"
-check "Cloud SQL HA"               "REGIONAL" "$(gcloud sql instances describe "$I" --project "$P" --format='value(settings.availabilityType)')"
-check "Cloud SQL public IP"        "False" "$(gcloud sql instances describe "$I" --project "$P" --format='value(settings.ipConfiguration.ipv4Enabled)')"
-check "Cloud SQL CMEK"             "$K" "$(gcloud sql instances describe "$I" --project "$P" --format='value(diskEncryptionConfiguration.kmsKeyName)')"
-check "Bucket public access"       "enforced" "$(gcloud storage buckets describe "gs://$B" --format='value(public_access_prevention)')"
-check "Bucket uniform access"      "True" "$(gcloud storage buckets describe "gs://$B" --format='value(uniform_bucket_level_access)')"
-check "Bucket CMEK"                "$K" "$(gcloud storage buckets describe "gs://$B" --format='value(default_kms_key)')"
+echo "== Project and billing"
+check "Project ID"            "customer-${TENANT}-prod" "$P"
+check "Project state"         "ACTIVE" "$(gcloud projects describe "$P" --format='value(lifecycleState)')"
+check "Project folder"        "$FOLDER" "$(gcloud projects describe "$P" --format='value(parent.id)')"
+check "Billing account"       "$EXPECTED_BILLING" "$(gcloud billing projects describe "$P" --format='value(billingAccountName)')"
+check "Billing enabled"       "True" "$(gcloud billing projects describe "$P" --format='value(billingEnabled)')"
 
-gcloud container clusters get-credentials "$C" --region "$R" --project "$P" >/dev/null 2>&1
-NOT_READY="$(kubectl -n "$NS" get deployments -o jsonpath='{range .items[?(@.status.availableReplicas!=@.spec.replicas)]}{.metadata.name}{" "}{end}' 2>/dev/null)"
-check "Workloads available"        "" "$NOT_READY"
+echo "== Ingestion"
+check_set "Pub/Sub raw-logs"          "$(gcloud pubsub topics describe raw-logs --project "$P" --format='value(name)' 2>/dev/null)"
+check_set "Pub/Sub normalized-events" "$(gcloud pubsub topics describe normalized-events --project "$P" --format='value(name)' 2>/dev/null)"
+B="$(get raw_logs_bucket)"
+check "Bucket public access"  "enforced" "$(gcloud storage buckets describe "gs://$B" --format='value(public_access_prevention)')"
+check "Bucket CMEK"           "$K" "$(gcloud storage buckets describe "gs://$B" --format='value(default_kms_key)')"
+
+echo "== Backend"
+check "Function log-normalizer"  "ACTIVE" "$(gcloud functions describe log-normalizer --gen2 --region "$R" --project "$P" --format='value(state)')"
+check "Cloud Run detection-engine" "True" "$(gcloud run services describe detection-engine --region "$R" --project "$P" --format='value(status.conditions[0].status)')"
+check "Cloud Run soc-portal-api"   "True" "$(gcloud run services describe soc-portal-api --region "$R" --project "$P" --format='value(status.conditions[0].status)')"
+
+echo "== Storage"
+check "Firestore (default)"   "FIRESTORE_NATIVE" "$(gcloud firestore databases describe --database='(default)' --project "$P" --format='value(type)')"
+check "BigQuery soc_events CMEK"     "$K" "$(bq --project_id="$P" show --format=json soc_events 2>/dev/null | jq -r '.defaultEncryptionConfiguration.kmsKeyName')"
+check "BigQuery soc_detections CMEK" "$K" "$(bq --project_id="$P" show --format=json soc_detections 2>/dev/null | jq -r '.defaultEncryptionConfiguration.kmsKeyName')"
+
+echo "== AI/ML"
+check_set "Vertex AI model deployed" "$(gcloud ai endpoints describe "$(get vertex_endpoint_id)" --region "$R" --project "$P" --format='value(deployedModels[0].id)' 2>/dev/null)"
+check_set "OpenAI key version"       "$(gcloud secrets versions list "$(get openai_secret)" --project "$P" --filter='state=ENABLED' --format='value(name)' --limit=1)"
+
+echo "== Frontend and security"
+check "TLS certificate"       "ACTIVE" "$(gcloud compute ssl-certificates describe "$(get ssl_certificate)" --global --project "$P" --format='value(managed.status)')"
+check "Cloud Armor attached"  "$(get armor_policy)" "$(gcloud compute backend-services describe "$(get backend_service)" --global --project "$P" --format='value(securityPolicy.basename())')"
+check "API /healthz"          "200" "$(curl -s -o /dev/null -w '%{http_code}' "https://$(get api_hostname)/healthz")"
+check "Portal (Firebase)"     "200" "$(curl -s -o /dev/null -w '%{http_code}' "https://$(get firebase_hosting_site).web.app/")"
+check "Cloud Run API direct access blocked" "404" "$(curl -s -o /dev/null -w '%{http_code}' "$(gcloud run services describe soc-portal-api --region "$R" --project "$P" --format='value(status.url)')/healthz")"
 
 echo
 if [[ $FAIL -eq 0 ]]; then echo "RESULT: tenant $TENANT PASSED all checks"; else echo "RESULT: tenant $TENANT FAILED - see FAIL lines"; fi

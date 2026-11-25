@@ -1,5 +1,5 @@
 # Customer-managed encryption key (CMEK) dedicated to this tenant.
-# Used by Cloud SQL and the Cloud Storage bucket.
+# Encrypts the raw-log bucket and both BigQuery datasets.
 resource "google_kms_key_ring" "tenant" {
   project  = google_project.tenant.project_id
   name     = "kr-${var.tenant_name}"
@@ -21,28 +21,26 @@ resource "google_kms_crypto_key" "cmek" {
 }
 
 # Service agents that must be allowed to use the key.
-resource "google_project_service_identity" "sqladmin" {
-  provider = google-beta
-  project  = google_project.tenant.project_id
-  service  = "sqladmin.googleapis.com"
-
-  depends_on = [google_project_service.services]
-}
-
 data "google_storage_project_service_account" "gcs" {
   project = google_project.tenant.project_id
 
   depends_on = [google_project_service.services]
 }
 
-resource "google_kms_crypto_key_iam_member" "sqladmin" {
-  crypto_key_id = google_kms_crypto_key.cmek.id
-  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
-  member        = "serviceAccount:${google_project_service_identity.sqladmin.email}"
+data "google_bigquery_default_service_account" "bq" {
+  project = google_project.tenant.project_id
+
+  depends_on = [google_project_service.services]
 }
 
 resource "google_kms_crypto_key_iam_member" "gcs" {
   crypto_key_id = google_kms_crypto_key.cmek.id
   role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
   member        = "serviceAccount:${data.google_storage_project_service_account.gcs.email_address}"
+}
+
+resource "google_kms_crypto_key_iam_member" "bq" {
+  crypto_key_id = google_kms_crypto_key.cmek.id
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:${data.google_bigquery_default_service_account.bq.email}"
 }

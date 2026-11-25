@@ -42,7 +42,7 @@ variable "billing_account" {
 }
 
 variable "tenants_folder_id" {
-  description = "Numeric ID of the folder Security Operation Center First > Tenants > Production."
+  description = "Numeric ID of the folder SecurityOperationCenterFirst > Tenants > Production."
   type        = string
 
   validation {
@@ -52,7 +52,7 @@ variable "tenants_folder_id" {
 }
 
 variable "region" {
-  description = "Region for all regional resources of this tenant."
+  description = "Region for all regional resources of this tenant (Cloud Run, Functions, Firestore, BigQuery, Vertex AI, Cloud Storage, KMS)."
   type        = string
   default     = "asia-southeast1"
 }
@@ -64,93 +64,66 @@ variable "labels" {
 }
 
 # ---------------------------------------------------------------------------
-# Network
+# Release and shared platform resources
 # ---------------------------------------------------------------------------
-# Each tenant has its own isolated VPC, so these ranges are safely reused across tenants.
-variable "subnet_cidr" {
-  description = "Primary range of the GKE subnet."
+variable "release_version" {
+  description = "SecurityOperationCenterFirst platform release deployed to this tenant (container image tag and artifact folder)."
   type        = string
-  default     = "10.10.0.0/20"
-}
-
-variable "pods_cidr" {
-  description = "Secondary range for GKE Pods."
-  type        = string
-  default     = "10.16.0.0/14"
-}
-
-variable "services_cidr" {
-  description = "Secondary range for GKE Services."
-  type        = string
-  default     = "10.20.0.0/20"
-}
-
-variable "gke_master_cidr" {
-  description = "/28 range for the GKE control plane of the private cluster."
-  type        = string
-  default     = "172.16.0.0/28"
-}
-
-variable "psa_address" {
-  description = "Start address of the Private Service Access range used by Cloud SQL."
-  type        = string
-  default     = "10.64.0.0"
-}
-
-variable "psa_prefix_length" {
-  description = "Prefix length of the Private Service Access range."
-  type        = number
-  default     = 20
-}
-
-variable "gke_master_authorized_cidrs" {
-  description = "CIDRs allowed to reach the GKE control plane (Security Operation Center First ops VPN / bastion egress)."
-  type = list(object({
-    cidr_block   = string
-    display_name = string
-  }))
-}
-
-# ---------------------------------------------------------------------------
-# Cloud SQL
-# ---------------------------------------------------------------------------
-variable "sql_tier" {
-  description = "Cloud SQL machine tier. Default: 2 vCPU / 7.5 GB."
-  type        = string
-  default     = "db-custom-2-7680"
-}
-
-variable "sql_disk_size_gb" {
-  description = "Initial SSD size in GB (auto-resize is on)."
-  type        = number
-  default     = 50
-}
-
-variable "sql_availability_type" {
-  description = "REGIONAL (high availability, production default) or ZONAL."
-  type        = string
-  default     = "REGIONAL"
 
   validation {
-    condition     = contains(["REGIONAL", "ZONAL"], var.sql_availability_type)
-    error_message = "sql_availability_type must be REGIONAL or ZONAL."
+    condition     = can(regex("^[0-9]{4}\\.[0-9]{1,2}\\.[0-9]+$", var.release_version))
+    error_message = "release_version must look like 2026.11.2."
+  }
+}
+
+variable "shared" {
+  description = "Shared platform resources in project socfirst-shared, used by every tenant."
+  type = object({
+    project           = string # shared project ID
+    registry_location = string # Artifact Registry location of the container images
+    registry_repo     = string # Artifact Registry repository
+    release_bucket    = string # bucket holding function sources, portal bundles and model artifacts
+    dns_zone          = string # Cloud DNS managed zone for base_domain
+  })
+  default = {
+    project           = "socfirst-shared"
+    registry_location = "asia-southeast1"
+    registry_repo     = "socfirst"
+    release_bucket    = "socfirst-shared-releases"
+    dns_zone          = "socfirst-public"
+  }
+}
+
+variable "base_domain" {
+  description = "Public DNS domain served by the shared zone. The tenant API becomes api.<tenant_name>.<base_domain>."
+  type        = string
+
+  validation {
+    condition     = can(regex("^([a-z0-9-]+\\.)+[a-z]{2,}$", var.base_domain))
+    error_message = "base_domain must be a lowercase DNS name such as soc.example.com."
   }
 }
 
 # ---------------------------------------------------------------------------
-# Cloud Storage
+# Data retention and sizing
 # ---------------------------------------------------------------------------
 variable "log_retention_days" {
-  description = "Days raw logs are kept in the tenant bucket before deletion."
+  description = "Days raw logs (Cloud Storage) and normalized events (BigQuery partitions) are kept."
   type        = number
   default     = 365
 }
 
+variable "api_min_instances" {
+  description = "Minimum Cloud Run instances for the portal API (1 avoids cold starts for analysts)."
+  type        = number
+  default     = 1
+}
+
 # ---------------------------------------------------------------------------
-# Access
+# Access and alerting
 # ---------------------------------------------------------------------------
 variable "ops_group" {
-  description = "IAM principal of the Security Operation Center First SRE group, e.g. group:socfirst-sre@example.com."
+  description = "IAM principal of the SecurityOperationCenterFirst SRE group, e.g. group:socfirst-sre@example.com."
   type        = string
 
   validation {
@@ -159,28 +132,8 @@ variable "ops_group" {
   }
 }
 
-variable "shared_artifact_registry" {
-  description = "Central Artifact Registry repository holding Security Operation Center First images and Helm charts."
-  type = object({
-    project    = string
-    location   = string
-    repository = string
-  })
-  default = {
-    project    = "socfirst-shared"
-    location   = "asia-southeast1"
-    repository = "socfirst"
-  }
-}
-
-variable "k8s_namespace" {
-  description = "Kubernetes namespace of the Security Operation Center First workloads."
-  type        = string
-  default     = "socfirst"
-}
-
-variable "k8s_service_account" {
-  description = "Kubernetes service account bound to the workload Google service account through Workload Identity."
-  type        = string
-  default     = "socfirst-workload"
+variable "notification_channels" {
+  description = "Cloud Monitoring notification channel IDs for tenant alerts (SRE on-call)."
+  type        = list(string)
+  default     = []
 }

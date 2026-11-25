@@ -1,5 +1,5 @@
-# Root configuration for ONE tenant. Generated from tenants/_template by scripts/new-tenant.sh.
-# Do not edit generated copies by hand except terraform.tfvars.
+# Root configuration for ONE SecurityOperationCenterFirst tenant.
+# Generated from tenants/_template by scripts/new-tenant.sh. Edit only terraform.tfvars in generated copies.
 
 terraform {
   required_version = ">= 1.6.0"
@@ -12,10 +12,6 @@ terraform {
     google-beta = {
       source  = "hashicorp/google-beta"
       version = ">= 6.0, < 7.0"
-    }
-    random = {
-      source  = "hashicorp/random"
-      version = ">= 3.6"
     }
   }
 }
@@ -40,58 +36,66 @@ variable "marketplace_order_id" { type = string }
 variable "billing_account" { type = string }
 variable "tenants_folder_id" { type = string }
 variable "region" { type = string }
+variable "release_version" { type = string }
+variable "base_domain" { type = string }
 variable "ops_group" { type = string }
-variable "gke_master_authorized_cidrs" {
-  type = list(object({
-    cidr_block   = string
-    display_name = string
-  }))
-}
-variable "sql_tier" {
-  type    = string
-  default = "db-custom-2-7680"
-}
-variable "sql_availability_type" {
-  type    = string
-  default = "REGIONAL"
+variable "notification_channels" {
+  type    = list(string)
+  default = []
 }
 variable "log_retention_days" {
   type    = number
   default = 365
 }
+variable "api_min_instances" {
+  type    = number
+  default = 1
+}
 
 module "tenant" {
   source = "../../modules/tenant"
 
-  tenant_name                 = var.tenant_name
-  customer_display_name       = var.customer_display_name
-  marketplace_order_id        = var.marketplace_order_id
-  billing_account             = var.billing_account
-  tenants_folder_id           = var.tenants_folder_id
-  region                      = var.region
-  ops_group                   = var.ops_group
-  gke_master_authorized_cidrs = var.gke_master_authorized_cidrs
-  sql_tier                    = var.sql_tier
-  sql_availability_type       = var.sql_availability_type
-  log_retention_days          = var.log_retention_days
+  tenant_name           = var.tenant_name
+  customer_display_name = var.customer_display_name
+  marketplace_order_id  = var.marketplace_order_id
+  billing_account       = var.billing_account
+  tenants_folder_id     = var.tenants_folder_id
+  region                = var.region
+  release_version       = var.release_version
+  base_domain           = var.base_domain
+  ops_group             = var.ops_group
+  notification_channels = var.notification_channels
+  log_retention_days    = var.log_retention_days
+  api_min_instances     = var.api_min_instances
 }
 
 output "tenant" {
-  description = "Everything the Helm deployment and the tenant register need."
+  description = "Everything the release pipeline, validation and the tenant register need."
   value = {
-    project_id               = module.tenant.project_id
-    project_number           = module.tenant.project_number
-    billing_account          = module.tenant.billing_account
-    region                   = module.tenant.region
-    gke_cluster_name         = module.tenant.gke_cluster_name
-    sql_instance_name        = module.tenant.sql_instance_name
-    sql_connection_name      = module.tenant.sql_connection_name
-    sql_private_ip           = module.tenant.sql_private_ip
-    sql_iam_user             = module.tenant.sql_iam_user
-    logs_bucket              = module.tenant.logs_bucket
-    kms_key_id               = module.tenant.kms_key_id
-    workload_service_account = module.tenant.workload_service_account
-    k8s_namespace            = module.tenant.k8s_namespace
-    k8s_service_account      = module.tenant.k8s_service_account
+    project_id                = module.tenant.project_id
+    project_number            = module.tenant.project_number
+    billing_account           = module.tenant.billing_account
+    region                    = module.tenant.region
+    release_version           = module.tenant.release_version
+    api_hostname              = module.tenant.api_hostname
+    lb_ip                     = module.tenant.lb_ip
+    ssl_certificate           = module.tenant.ssl_certificate
+    armor_policy              = module.tenant.armor_policy
+    backend_service           = module.tenant.backend_service
+    raw_logs_topic            = module.tenant.raw_logs_topic
+    normalized_topic          = module.tenant.normalized_topic
+    function_name             = module.tenant.function_name
+    run_portal_api            = module.tenant.run_portal_api
+    run_detection_engine      = module.tenant.run_detection_engine
+    firestore_database        = module.tenant.firestore_database
+    bq_events_dataset         = module.tenant.bq_events_dataset
+    bq_detections_dataset     = module.tenant.bq_detections_dataset
+    raw_logs_bucket           = module.tenant.raw_logs_bucket
+    vertex_endpoint_id        = module.tenant.vertex_endpoint_id
+    firebase_hosting_site     = module.tenant.firebase_hosting_site
+    firebase_web_app_id       = module.tenant.firebase_web_app_id
+    openai_secret             = module.tenant.openai_secret
+    collector_service_account = module.tenant.collector_service_account
+    kms_key_id                = module.tenant.kms_key_id
   }
 }

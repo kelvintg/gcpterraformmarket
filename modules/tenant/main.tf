@@ -1,30 +1,46 @@
 locals {
-  project_id = "customer-${var.tenant_name}-prod"
+  project_id   = "customer-${var.tenant_name}-prod"
+  api_hostname = "api.${var.tenant_name}.${var.base_domain}"
 
   labels = merge({
     tenant            = var.tenant_name
     env               = "prod"
-    product           = "socfirst"
+    product           = "securityoperationcenterfirst"
     managed-by        = "terraform"
     marketplace-order = var.marketplace_order_id
   }, var.labels)
 
+  registry = "${var.shared.registry_location}-docker.pkg.dev/${var.shared.project}/${var.shared.registry_repo}"
+  images = {
+    portal_api = "${local.registry}/soc-portal-api:${var.release_version}"
+    detection  = "${local.registry}/detection-engine:${var.release_version}"
+  }
+
   services = [
-    "compute.googleapis.com",
-    "container.googleapis.com",
-    "sqladmin.googleapis.com",
-    "servicenetworking.googleapis.com",
-    "storage.googleapis.com",
+    "aiplatform.googleapis.com",
+    "artifactregistry.googleapis.com",
+    "bigquery.googleapis.com",
+    "cloudbuild.googleapis.com",
+    "cloudfunctions.googleapis.com",
     "cloudkms.googleapis.com",
-    "secretmanager.googleapis.com",
+    "compute.googleapis.com",
+    "eventarc.googleapis.com",
+    "firebase.googleapis.com",
+    "firebasehosting.googleapis.com",
+    "firestore.googleapis.com",
     "iam.googleapis.com",
+    "identitytoolkit.googleapis.com",
     "logging.googleapis.com",
     "monitoring.googleapis.com",
+    "pubsub.googleapis.com",
+    "run.googleapis.com",
+    "secretmanager.googleapis.com",
+    "storage.googleapis.com",
   ]
 }
 
-# One dedicated project per customer, in the Security Operation Center First organization,
-# billed to the Security Operation Center First partner billing account.
+# One dedicated project per customer, in the SecurityOperationCenterFirst organization,
+# billed to the SecurityOperationCenterFirst partner billing account.
 resource "google_project" "tenant" {
   project_id          = local.project_id
   name                = local.project_id
