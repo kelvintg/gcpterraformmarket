@@ -59,37 +59,21 @@ resource "google_bigquery_dataset" "detections" {
 }
 
 # ---------------------------------------------------------------------------
-# AI/ML: Vertex AI endpoint for the tenant's custom anomaly model.
-# The model itself is uploaded and deployed by the tenant-release pipeline (phase 5).
+# AI/ML (Google models only)
+# 1. Vertex AI endpoint for the tenant's custom anomaly model. The model itself is
+#    uploaded and deployed by the tenant-release pipeline (phase 5).
+# 2. Gemini on Vertex AI is a Google-managed publisher model: nothing to provision here.
+#    The workloads call it in var.gemini_location with their own service accounts
+#    (roles/aiplatform.user in iam.tf); usage is billed to this tenant project.
 # ---------------------------------------------------------------------------
 resource "google_vertex_ai_endpoint" "anomaly" {
   project      = google_project.tenant.project_id
   name         = "1001" # numeric endpoint ID, unique within this tenant project
   display_name = "soc-anomaly-detector"
   description  = "Custom anomaly-detection model for ${var.customer_display_name}"
-  location     = var.region
-  region       = var.region
+  location     = local.vertex_location
+  region       = local.vertex_location
   labels       = local.labels
-
-  depends_on = [google_project_service.services]
-}
-
-# ---------------------------------------------------------------------------
-# AI/ML: OpenAI API key (Other Cloud Provider). Terraform creates the empty secret;
-# the key itself is added by an engineer in phase 5 and never passes through Terraform state.
-# ---------------------------------------------------------------------------
-resource "google_secret_manager_secret" "openai" {
-  project   = google_project.tenant.project_id
-  secret_id = "openai-api-key"
-  labels    = local.labels
-
-  replication {
-    user_managed {
-      replicas {
-        location = var.region
-      }
-    }
-  }
 
   depends_on = [google_project_service.services]
 }

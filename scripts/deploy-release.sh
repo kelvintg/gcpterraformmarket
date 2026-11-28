@@ -11,12 +11,13 @@ set -euo pipefail
 OUTPUTS="$1"
 STAGE="$2"
 RELEASE_BUCKET="${RELEASE_BUCKET:-socfirst-shared-releases}"
-MODEL_IMAGE="${MODEL_IMAGE:-asia-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-3:latest}"
 
 get() { python3 -c "import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])" "$OUTPUTS" "$1"; }
 
 PROJECT_ID="$(get project_id)"
-REGION="$(get region)"
+REGION="$(get vertex_location)" # Vertex AI custom-model region (the tenant region unless overridden)
+# Vertex AI prebuilt serving container from the matching geography (us, europe or asia).
+MODEL_IMAGE="${MODEL_IMAGE:-$(get registry_location)-docker.pkg.dev/vertex-ai/prediction/sklearn-cpu.1-3:latest}"
 RELEASE="$(get release_version)"
 ENDPOINT="$(get vertex_endpoint_id)"
 SITE="$(get firebase_hosting_site)"
@@ -77,9 +78,4 @@ cat > "$STAGE/firebase.json" <<EOF
 EOF
 printf '%s' "$PROJECT_ID" > "$STAGE/project_id"
 
-# Remind the operator if the OpenAI key has not been added yet (phase 5 manual step).
-if [[ -z "$(gcloud secrets versions list "$(get openai_secret)" --project="$PROJECT_ID" \
-      --filter='state=ENABLED' --format='value(name)' --limit=1)" ]]; then
-  echo "!! Secret $(get openai_secret) has no enabled version yet - add the tenant's OpenAI key (runbook phase 5)."
-fi
-echo ">> Release ${RELEASE} staged for ${PROJECT_ID}"
+echo ">> Release ${RELEASE} staged for ${PROJECT_ID} (Gemini: $(get gemini_model) @ $(get gemini_location))"

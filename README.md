@@ -4,16 +4,18 @@ Terraform that creates a dedicated (single-tenant) Google Cloud environment for 
 Each tenant project runs its own copy of the partner-tenant stack from the SecurityOperationCenterFirst platform architecture.
 The step-by-step procedure is SOP-PLT-004 *Single-Tenant Provisioning Runbook*.
 
+![SecurityOperationCenterFirst platform architecture: tenancy and location of every component](docs/architecture.png)
+
 | Item | Value |
 | --- | --- |
 | Project per tenant | `customer-<name>-prod` |
 | Billing account | `010C56-DBE422-956EBA` |
 | Folder | `SecurityOperationCenterFirst > Tenants > Production` |
-| Default region | `asia-southeast1` (Singapore) |
+| Region | Any Google Cloud region the customer selects (default `asia-southeast1`). Cloud Load Balancing, Cloud Armor and Firebase Hosting run on Google's global edge |
 | Ingestion | Cloud Pub/Sub (`raw-logs`, `normalized-events`, `dead-letter`), Cloud Storage raw-log archive, Cloud Logging, Cloud Monitoring |
 | Backend | Cloud Functions 2nd gen `log-normalizer`, Cloud Run `detection-engine` |
 | Storage | Firestore (Native), BigQuery `soc_events` and `soc_detections` |
-| AI/ML | Vertex AI endpoint `soc-anomaly-detector`; OpenAI API key in Secret Manager (OpenAI itself is an Other Cloud Provider) |
+| AI/ML | Google models only: Gemini on Vertex AI (`gemini-3.8-flash` for triage and the analyst assistant, `gemini-4-argon` for deep investigations) and the Vertex AI custom-model endpoint `soc-anomaly-detector`. No third-party AI |
 | Frontend | Cloud Run `soc-portal-api`, Firebase Hosting + Authentication |
 | Security | Cloud Armor, global external Application Load Balancer with Google-managed TLS, IAM (one service account per component), Cloud KMS (CMEK) |
 | State | `gs://socfirst-tfstate/tenants/<name>` (project `socfirst-automation`) |
@@ -21,6 +23,16 @@ The step-by-step procedure is SOP-PLT-004 *Single-Tenant Provisioning Runbook*.
 
 Resource IDs keep the short prefix `socfirst` (for example `socfirst-automation`) because GCP project IDs are limited to
 30 characters, which `securityoperationcenterfirst-automation` (39) would exceed.
+
+## Regions and AI locations
+
+- `region` can be any Google Cloud region that offers Cloud Run, Cloud Functions, Firestore and BigQuery; `new-tenant.sh`
+  checks Cloud Run availability before generating the tenant. Images are pulled from the `asia`, `europe` or `us`
+  Artifact Registry multi-region nearest that region.
+- Gemini is called on the Vertex AI `global` endpoint by default, so it works for a tenant in any region. For customers
+  that require in-region ML processing, set `gemini_location` to `us`, `eu` or the tenant region (where the model is offered).
+- The Vertex AI custom-model endpoint runs in the tenant region; set `vertex_location` to the nearest Vertex AI region
+  if the tenant region has no Vertex AI prediction.
 
 ## Layout
 
@@ -30,7 +42,7 @@ modules/tenant/          The tenant module (one call = one complete tenant)
   kms.tf                 Key ring + CMEK key, grants to the Cloud Storage and BigQuery service agents
   ingestion.tf           Pub/Sub topics and push subscription, raw-log bucket
   backend.tf             Cloud Functions log-normalizer, Cloud Run detection-engine
-  data.tf                Firestore + daily backups, BigQuery datasets, Vertex AI endpoint, OpenAI key secret
+  data.tf                Firestore + daily backups, BigQuery datasets, Vertex AI custom-model endpoint
   frontend.tf            Cloud Run soc-portal-api, Firebase project, web app and Hosting site
   security.tf            Cloud Armor policy, load balancer, managed certificate, DNS record
   iam.tf                 Service agents, per-component service accounts, least-privilege bindings, SRE group
@@ -45,8 +57,8 @@ scripts/                 new-tenant.sh, deploy-release.sh, validate-tenant.sh
 ## One-time setup
 
 1. In `tenants/_template/terraform.tfvars`, replace every `REPLACE_WITH_*` value (folder ID, SRE group, base domain).
-2. In project `socfirst-shared`: Artifact Registry repository `socfirst` (images `soc-portal-api`, `detection-engine`),
-   bucket `socfirst-shared-releases` (function sources, portal bundles, model artifacts) and public Cloud DNS zone `socfirst-public` for the base domain.
+2. In project `socfirst-shared`: Artifact Registry repository `socfirst` in each of the `asia`, `europe` and `us`
+   multi-regions (images `soc-portal-api`, `detection-engine`), bucket `socfirst-shared-releases` (function sources, portal bundles, model artifacts) and public Cloud DNS zone `socfirst-public` for the base domain.
 3. In project `socfirst-automation`:
    - Create the state bucket `socfirst-tfstate` (versioning on, uniform access) and the records bucket `socfirst-provisioning-records`.
    - Enable the APIs `cloudresourcemanager`, `cloudbilling`, `serviceusage`, `iam`, `cloudbuild`, `firebase` and every API listed in `modules/tenant/main.tf`.
@@ -54,11 +66,11 @@ scripts/                 new-tenant.sh, deploy-release.sh, validate-tenant.sh
    - On folder `Tenants > Production`: `roles/resourcemanager.projectCreator`, `roles/resourcemanager.projectIamAdmin`,
      `roles/serviceusage.serviceUsageAdmin`, `roles/firebase.admin`, `roles/run.admin`, `roles/cloudfunctions.admin`,
      `roles/eventarc.admin`, `roles/pubsub.admin`, `roles/datastore.owner`, `roles/bigquery.admin`, `roles/aiplatform.admin`,
-     `roles/storage.admin`, `roles/cloudkms.admin`, `roles/secretmanager.admin`, `roles/compute.loadBalancerAdmin`,
+     `roles/storage.admin`, `roles/cloudkms.admin`, `roles/compute.loadBalancerAdmin`,
      `roles/compute.securityAdmin`, `roles/monitoring.admin`, `roles/logging.admin`, `roles/iam.serviceAccountAdmin`,
      `roles/iam.serviceAccountUser`.
    - On billing account `010C56-DBE422-956EBA`: `roles/billing.user`.
-   - In `socfirst-shared`: `roles/artifactregistry.admin` on repository `socfirst`, `roles/storage.admin` on bucket
+   - In `socfirst-shared`: `roles/artifactregistry.admin` on the three `socfirst` repositories, `roles/storage.admin` on bucket
      `socfirst-shared-releases`, `roles/dns.admin` on zone `socfirst-public` (to grant tenant access and add the API record).
    - On the state and records buckets: `roles/storage.objectAdmin`.
 5. Create the Cloud Build triggers:
@@ -86,8 +98,7 @@ git checkout -b tenant/acme && git add tenants/acme && git commit -m "Add tenant
 # PR -> tenant-plan posts the plan -> review + merge
 gcloud builds triggers run tenant-apply   --project=socfirst-automation --branch=main --substitutions=_TENANT=acme   # ~40 min
 gcloud builds triggers run tenant-release --project=socfirst-automation --branch=main --substitutions=_TENANT=acme   # ~25 min
-printf '%s' "$OPENAI_PROJECT_KEY" | gcloud secrets versions add openai-api-key --project=customer-acme-prod --data-file=-
-scripts/validate-tenant.sh acme
+scripts/validate-tenant.sh acme   # includes a Gemini smoke test
 ```
 
 Full procedure, timings, validation and rollback: SOP-PLT-004.

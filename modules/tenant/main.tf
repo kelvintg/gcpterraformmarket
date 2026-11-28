@@ -10,7 +10,21 @@ locals {
     marketplace-order = var.marketplace_order_id
   }, var.labels)
 
-  registry = "${var.shared.registry_location}-docker.pkg.dev/${var.shared.project}/${var.shared.registry_repo}"
+  # Pull images from the Artifact Registry multi-region nearest the tenant region.
+  geography = split("-", var.region)[0]
+  registry_location = lookup({
+    us           = "us"
+    northamerica = "us"
+    southamerica = "us"
+    europe       = "europe"
+    me           = "europe"
+    africa       = "europe"
+    asia         = "asia"
+    australia    = "asia"
+  }, local.geography, "us")
+  registry = "${local.registry_location}-docker.pkg.dev/${var.shared.project}/${var.shared.registry_repo}"
+
+  vertex_location = var.vertex_location != "" ? var.vertex_location : var.region
   images = {
     portal_api = "${local.registry}/soc-portal-api:${var.release_version}"
     detection  = "${local.registry}/detection-engine:${var.release_version}"
@@ -34,7 +48,6 @@ locals {
     "monitoring.googleapis.com",
     "pubsub.googleapis.com",
     "run.googleapis.com",
-    "secretmanager.googleapis.com",
     "storage.googleapis.com",
   ]
 }

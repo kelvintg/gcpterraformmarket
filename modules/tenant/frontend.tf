@@ -50,6 +50,15 @@ resource "google_cloud_run_v2_service" "portal_api" {
         name  = "ALLOWED_ORIGIN"
         value = "https://${google_firebase_hosting_site.portal.site_id}.web.app"
       }
+      env {
+        # Analyst assistant: case summaries and natural-language search over the tenant's data.
+        name  = "GEMINI_MODEL"
+        value = var.gemini_model
+      }
+      env {
+        name  = "GEMINI_LOCATION"
+        value = var.gemini_location
+      }
     }
   }
 

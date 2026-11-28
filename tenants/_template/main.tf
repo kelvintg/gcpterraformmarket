@@ -51,6 +51,22 @@ variable "api_min_instances" {
   type    = number
   default = 1
 }
+variable "gemini_model" {
+  type    = string
+  default = "gemini-3.8-flash"
+}
+variable "gemini_reasoning_model" {
+  type    = string
+  default = "gemini-4-argon"
+}
+variable "gemini_location" {
+  type    = string
+  default = "global"
+}
+variable "vertex_location" {
+  type    = string
+  default = ""
+}
 
 module "tenant" {
   source = "../../modules/tenant"
@@ -67,6 +83,11 @@ module "tenant" {
   notification_channels = var.notification_channels
   log_retention_days    = var.log_retention_days
   api_min_instances     = var.api_min_instances
+
+  gemini_model           = var.gemini_model
+  gemini_reasoning_model = var.gemini_reasoning_model
+  gemini_location        = var.gemini_location
+  vertex_location        = var.vertex_location
 }
 
 output "tenant" {
@@ -92,9 +113,13 @@ output "tenant" {
     bq_detections_dataset     = module.tenant.bq_detections_dataset
     raw_logs_bucket           = module.tenant.raw_logs_bucket
     vertex_endpoint_id        = module.tenant.vertex_endpoint_id
+    vertex_location           = module.tenant.vertex_location
+    gemini_model              = module.tenant.gemini_model
+    gemini_reasoning_model    = module.tenant.gemini_reasoning_model
+    gemini_location           = module.tenant.gemini_location
+    registry_location         = module.tenant.registry_location
     firebase_hosting_site     = module.tenant.firebase_hosting_site
     firebase_web_app_id       = module.tenant.firebase_web_app_id
-    openai_secret             = module.tenant.openai_secret
     collector_service_account = module.tenant.collector_service_account
     kms_key_id                = module.tenant.kms_key_id
   }

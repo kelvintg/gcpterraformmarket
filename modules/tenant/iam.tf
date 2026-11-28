@@ -28,7 +28,7 @@ resource "google_project_service_identity" "pubsub" {
 # Cloud Run pulls SecurityOperationCenterFirst images from the shared registry.
 resource "google_artifact_registry_repository_iam_member" "run_agent_pull" {
   project    = var.shared.project
-  location   = var.shared.registry_location
+  location   = local.registry_location
   repository = var.shared.registry_repo
   role       = "roles/artifactregistry.reader"
   member     = "serviceAccount:${google_project_service_identity.run.email}"
@@ -182,13 +182,6 @@ resource "google_bigquery_dataset_iam_member" "detection_detections" {
   member     = "serviceAccount:${google_service_account.run_detection.email}"
 }
 
-resource "google_secret_manager_secret_iam_member" "detection_openai" {
-  project   = google_project.tenant.project_id
-  secret_id = google_secret_manager_secret.openai.secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.run_detection.email}"
-}
-
 resource "google_pubsub_topic_iam_member" "detection_publish_raw" {
   # Flow 3: alerts pulled from Microsoft Graph Security API are published to raw-logs.
   project = google_project.tenant.project_id
@@ -227,7 +220,7 @@ locals {
     }
     api = {
       member = "serviceAccount:${google_service_account.run_api.email}"
-      roles  = ["roles/bigquery.jobUser", "roles/datastore.user", "roles/logging.logWriter", "roles/monitoring.metricWriter"]
+      roles  = ["roles/bigquery.jobUser", "roles/datastore.user", "roles/aiplatform.user", "roles/logging.logWriter", "roles/monitoring.metricWriter"]
     }
     normalizer = {
       member = "serviceAccount:${google_service_account.fn_normalizer.email}"
@@ -269,18 +262,16 @@ resource "google_storage_bucket_iam_member" "collector_upload" {
 }
 
 # ---------------------------------------------------------------------------
-# SecurityOperationCenterFirst SRE group: read-only by default.
-# It may add (not read) the OpenAI key version in phase 5.
+# SecurityOperationCenterFirst SRE group: read-only, plus Vertex AI user so the
+# validation script can run its Gemini smoke test. No access to customer data stores.
 # ---------------------------------------------------------------------------
-resource "google_project_iam_member" "ops_viewer" {
-  project = google_project.tenant.project_id
-  role    = "roles/viewer"
-  member  = var.ops_group
-}
+resource "google_project_iam_member" "ops" {
+  for_each = toset([
+    "roles/viewer",
+    "roles/aiplatform.user",
+  ])
 
-resource "google_secret_manager_secret_iam_member" "ops_add_openai_key" {
-  project   = google_project.tenant.project_id
-  secret_id = google_secret_manager_secret.openai.secret_id
-  role      = "roles/secretmanager.secretVersionAdder"
-  member    = var.ops_group
+  project = google_project.tenant.project_id
+  role    = each.value
+  member  = var.ops_group
 }

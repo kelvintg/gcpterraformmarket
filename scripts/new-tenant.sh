@@ -26,6 +26,19 @@ if [[ ! "$TENANT" =~ ^[a-z][a-z0-9-]{1,14}[a-z0-9]$ ]]; then
   exit 1
 fi
 
+if [[ ! "$REGION" =~ ^[a-z]+(-[a-z]+)+[0-9]+$ ]]; then
+  echo "ERROR: region '$REGION' is not a Google Cloud region name (e.g. asia-southeast1, europe-west1, us-central1)." >&2
+  exit 1
+fi
+
+# The stack runs in any region that offers Cloud Run, Cloud Functions, Firestore and BigQuery.
+if command -v gcloud >/dev/null 2>&1 && gcloud run regions list --format='value(locationId)' >/dev/null 2>&1; then
+  if ! gcloud run regions list --format='value(locationId)' | grep -qx "$REGION"; then
+    echo "ERROR: Cloud Run is not available in $REGION." >&2
+    exit 1
+  fi
+fi
+
 if [[ ! "$ORDER_ID" =~ ^[a-z0-9_-]{1,63}$ ]]; then
   echo "ERROR: marketplace order ID must be 1-63 lowercase letters, digits, hyphens or underscores." >&2
   exit 1
@@ -71,6 +84,7 @@ Created $DEST
   Billing account : $(grep -E '^billing_account' "$DEST/terraform.tfvars" | cut -d'"' -f2)
   Region          : $REGION
   Release         : $(grep -E '^release_version' "$DEST/terraform.tfvars" | cut -d'"' -f2)
+  Gemini          : $(grep -E '^gemini_model ' "$DEST/terraform.tfvars" | cut -d'"' -f2) @ $(grep -E '^gemini_location' "$DEST/terraform.tfvars" | cut -d'"' -f2)
   Portal API      : https://api.${TENANT}.${BASE_DOMAIN}
 
 Next:

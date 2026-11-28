@@ -57,8 +57,9 @@ resource "google_cloudfunctions2_function" "normalizer" {
 
 # ---------------------------------------------------------------------------
 # Backend: Cloud Run detection engine
-# Runs detection rules on normalized events, scores them with Vertex AI and the OpenAI API,
-# and writes alerts and cases to Firestore and BigQuery. Reachable only from Pub/Sub push.
+# Runs detection rules on normalized events, scores them with the Vertex AI custom model,
+# triages and enriches alerts with Gemini, and writes alerts and cases to Firestore and BigQuery.
+# Reachable only from Pub/Sub push.
 # ---------------------------------------------------------------------------
 resource "google_cloud_run_v2_service" "detection" {
   project  = google_project.tenant.project_id
@@ -111,9 +112,16 @@ resource "google_cloud_run_v2_service" "detection" {
         value = google_vertex_ai_endpoint.anomaly.id
       }
       env {
-        # Read at runtime, so the service starts before the key is added in phase 5.
-        name  = "OPENAI_KEY_SECRET"
-        value = "${google_secret_manager_secret.openai.id}/versions/latest"
+        name  = "GEMINI_MODEL"
+        value = var.gemini_model
+      }
+      env {
+        name  = "GEMINI_REASONING_MODEL"
+        value = var.gemini_reasoning_model
+      }
+      env {
+        name  = "GEMINI_LOCATION"
+        value = var.gemini_location
       }
     }
   }

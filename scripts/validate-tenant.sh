@@ -52,8 +52,24 @@ check "BigQuery soc_events CMEK"     "$K" "$(bq --project_id="$P" show --format=
 check "BigQuery soc_detections CMEK" "$K" "$(bq --project_id="$P" show --format=json soc_detections 2>/dev/null | jq -r '.defaultEncryptionConfiguration.kmsKeyName')"
 
 echo "== AI/ML"
-check_set "Vertex AI model deployed" "$(gcloud ai endpoints describe "$(get vertex_endpoint_id)" --region "$R" --project "$P" --format='value(deployedModels[0].id)' 2>/dev/null)"
-check_set "OpenAI key version"       "$(gcloud secrets versions list "$(get openai_secret)" --project "$P" --filter='state=ENABLED' --format='value(name)' --limit=1)"
+check_set "Vertex AI model deployed" "$(gcloud ai endpoints describe "$(get vertex_endpoint_id)" --region "$(get vertex_location)" --project "$P" --format='value(deployedModels[0].id)' 2>/dev/null)"
+
+# Gemini smoke test: one tiny generateContent call, billed to the tenant project.
+gemini_check() { # gemini_check <model>
+  local loc host
+  loc="$(get gemini_location)"
+  case "$loc" in
+    global) host="aiplatform.googleapis.com" ;;
+    us|eu)  host="aiplatform.${loc}.rep.googleapis.com" ;;
+    *)      host="${loc}-aiplatform.googleapis.com" ;;
+  esac
+  curl -s -o /dev/null -w '%{http_code}' -X POST \
+    -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "Content-Type: application/json" \
+    "https://${host}/v1/projects/${P}/locations/${loc}/publishers/google/models/$1:generateContent" \
+    -d '{"contents":[{"role":"user","parts":[{"text":"Reply with OK"}]}],"generationConfig":{"maxOutputTokens":5}}'
+}
+check "Gemini $(get gemini_model)"           "200" "$(gemini_check "$(get gemini_model)")"
+check "Gemini $(get gemini_reasoning_model)" "200" "$(gemini_check "$(get gemini_reasoning_model)")"
 
 echo "== Frontend and security"
 check "TLS certificate"       "ACTIVE" "$(gcloud compute ssl-certificates describe "$(get ssl_certificate)" --global --project "$P" --format='value(managed.status)')"

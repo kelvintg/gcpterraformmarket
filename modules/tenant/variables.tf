@@ -52,9 +52,46 @@ variable "tenants_folder_id" {
 }
 
 variable "region" {
-  description = "Region for all regional resources of this tenant (Cloud Run, Functions, Firestore, BigQuery, Vertex AI, Cloud Storage, KMS)."
+  description = "Google Cloud region chosen by the customer for all regional resources (Cloud Run, Functions, Firestore, BigQuery, Cloud Storage, KMS). Any region where these services run is supported."
   type        = string
   default     = "asia-southeast1"
+
+  validation {
+    condition     = can(regex("^[a-z]+(-[a-z]+)+[0-9]+$", var.region))
+    error_message = "region must be a Google Cloud region name such as asia-southeast1, europe-west1 or us-central1."
+  }
+}
+
+# ---------------------------------------------------------------------------
+# AI: Google models only (Gemini on Vertex AI + Vertex AI custom models)
+# ---------------------------------------------------------------------------
+variable "gemini_model" {
+  description = "Gemini model for alert triage, enrichment and the analyst assistant (GA model ID on Vertex AI)."
+  type        = string
+  default     = "gemini-3.8-flash"
+}
+
+variable "gemini_reasoning_model" {
+  description = "Gemini model for deep investigations and incident reports (GA model ID on Vertex AI)."
+  type        = string
+  default     = "gemini-4-argon"
+}
+
+variable "gemini_location" {
+  description = "Vertex AI location that serves Gemini: global (default, available from every region), the multi-regions us or eu, or a region such as europe-west1 when the customer requires in-region ML processing."
+  type        = string
+  default     = "global"
+
+  validation {
+    condition     = contains(["global", "us", "eu"], var.gemini_location) || can(regex("^[a-z]+(-[a-z]+)+[0-9]+$", var.gemini_location))
+    error_message = "gemini_location must be global, us, eu or a region name."
+  }
+}
+
+variable "vertex_location" {
+  description = "Region for the Vertex AI custom-model endpoint. Empty = same as region; set the nearest Vertex AI region if the tenant region has no Vertex AI prediction."
+  type        = string
+  default     = ""
 }
 
 variable "labels" {
@@ -77,20 +114,18 @@ variable "release_version" {
 }
 
 variable "shared" {
-  description = "Shared platform resources in project socfirst-shared, used by every tenant."
+  description = "Shared platform resources in project socfirst-shared, used by every tenant. The registry repository exists in the asia, europe and us multi-regions; each tenant pulls from the one nearest its region."
   type = object({
-    project           = string # shared project ID
-    registry_location = string # Artifact Registry location of the container images
-    registry_repo     = string # Artifact Registry repository
-    release_bucket    = string # bucket holding function sources, portal bundles and model artifacts
-    dns_zone          = string # Cloud DNS managed zone for base_domain
+    project        = string # shared project ID
+    registry_repo  = string # Artifact Registry repository name (same name in asia, europe and us)
+    release_bucket = string # bucket holding function sources, portal bundles and model artifacts
+    dns_zone       = string # Cloud DNS managed zone for base_domain
   })
   default = {
-    project           = "socfirst-shared"
-    registry_location = "asia-southeast1"
-    registry_repo     = "socfirst"
-    release_bucket    = "socfirst-shared-releases"
-    dns_zone          = "socfirst-public"
+    project        = "socfirst-shared"
+    registry_repo  = "socfirst"
+    release_bucket = "socfirst-shared-releases"
+    dns_zone       = "socfirst-public"
   }
 }
 

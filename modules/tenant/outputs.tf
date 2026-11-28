@@ -98,6 +98,31 @@ output "vertex_endpoint_id" {
   value       = google_vertex_ai_endpoint.anomaly.name
 }
 
+output "vertex_location" {
+  description = "Region of the Vertex AI custom-model endpoint."
+  value       = local.vertex_location
+}
+
+output "gemini_model" {
+  description = "Gemini model used for triage and the analyst assistant."
+  value       = var.gemini_model
+}
+
+output "gemini_reasoning_model" {
+  description = "Gemini model used for deep investigations."
+  value       = var.gemini_reasoning_model
+}
+
+output "gemini_location" {
+  description = "Vertex AI location that serves Gemini (global, us, eu or a region)."
+  value       = var.gemini_location
+}
+
+output "registry_location" {
+  description = "Artifact Registry multi-region the tenant pulls images from."
+  value       = local.registry_location
+}
+
 output "firebase_hosting_site" {
   description = "Firebase Hosting site ID of the analyst portal."
   value       = google_firebase_hosting_site.portal.site_id
@@ -106,11 +131,6 @@ output "firebase_hosting_site" {
 output "firebase_web_app_id" {
   description = "Firebase web app ID."
   value       = google_firebase_web_app.portal.app_id
-}
-
-output "openai_secret" {
-  description = "Secret Manager secret that holds the tenant's OpenAI API key."
-  value       = google_secret_manager_secret.openai.secret_id
 }
 
 output "collector_service_account" {
